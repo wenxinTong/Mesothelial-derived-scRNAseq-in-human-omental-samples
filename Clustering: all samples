@@ -1,0 +1,103 @@
+library(Seurat)
+library(tidyverse)
+library(Matrix)
+library(scales)
+library(cowplot)
+library(RCurl)
+library(AnnotationHub)
+
+for (file in c("HMSLN1", "HMSLN2","HMSLN3","HMSLN5","HMSLN6")){
+        seurat_data <- Read10X(data.dir = paste0("./", file))
+        seurat_obj <- CreateSeuratObject(counts = seurat_data, 
+                                         min.features = 100, 
+                                         project = file)
+        assign(file, seurat_obj)
+}
+
+merged_seurat <- merge(x = HMSLN1, 
+                      y = list(HMSLN2,HMSLN3,HMSLN5, HMSLN6),
+                      add.cell.id = c("High_IR", "High_IR", "High_IR", "Low_IR","Low_IR"))
+
+merged_seurat$log10GenesPerUMI <- log10(merged_seurat$nFeature_RNA) / log10(merged_seurat$nCount_RNA)
+merged_seurat$mitoRatio <- PercentageFeatureSet(object = merged_seurat, pattern = "^MT-")
+merged_seurat$mitoRatio <- merged_seurat@meta.data$mitoRatio / 100
+metadata <- merged_seurat@meta.data
+metadata$cells <- rownames(metadata)
+metadata$group <- NA
+metadata$group[which(str_detect(metadata$cells, "^High_IR"))] <- "High_IR"
+metadata$group[which(str_detect(metadata$cells, "^Low_IR"))] <- "Low_IR"
+
+
+merged_seurat@meta.data <- metadata
+save(merged_seurat, file="./merged_seurat.RData")
+
+
+
+merged_seurat <- subset(x = merged_seurat, 
+                          subset= (nCount_RNA >= 500) & 
+                            (nFeature_RNA >= 250) & 
+                            (log10GenesPerUMI > 0.80) & 
+                            (mitoRatio < 0.10))
+
+
+
+split_seurat <- SplitObject(merged_seurat, split.by = "group")
+
+split_seurat <- lapply(X = split_seurat, FUN = function(x) {
+    x <- NormalizeData(x, verbose = FALSE)
+    x <- FindVariableFeatures(x, verbose = FALSE)
+})
+
+features <- SelectIntegrationFeatures(object.list = split_seurat)
+split_seurat <- lapply(X = split_seurat, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+
+anchors <- FindIntegrationAnchors(object.list = split_seurat, reference = c(1, 2), reduction = "rpca",
+    dims = 1:50)
+
+integrated_seurat <- IntegrateData(anchorset = anchors, dims = 1:50)
+integrated_seurat<-ScaleData(integrated_seurat, verbose = FALSE)
+integrated_seurat <- RunPCA(integrated_seurat, verbose = FALSE)
+integrated_seurat <- RunUMAP(integrated_seurat, dims = 1:50)
+integrated_seurat <- RunTSNE(integrated_seurat, dims = 1:15)
+
+############ Generation of Figure 2A ##############
+DimPlot(integrated_seurat, group.by = "orig.ident",reduction = "tsne")
+ggsave("results/Integration_sample.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+############ clustering cells, identifying marker genes for each cluster: Figure 2 B-D ###############
+Integrated_d15 <- RunPCA(integrated_seurat, features = VariableFeatures(object = integrated_seurat))
+Integrated_d15 <- FindNeighbors(Integrated_d15, dims = 1:15)
+Integrated_d15 <- FindClusters(Integrated_d15, resolution = 0.1)
+Integrated_d15_tsne <- RunTSNE(Integrated_d15, dims = 1:15)
+Integrated_d15_tsne$group<-factor(Integrated_d15_tsne$group,levels = c("Low_IR","High_IR"))
+
+cluster.markers <- FindAllMarkers(Integrated_d15, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+cluster.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 5, wt = avg_log2FC) -> top5_cluster_marker
+    
+ Integrated_d15<-RenameIdents(object = Integrated_d15, 
+                               "0" = "Cluster 1",
+                               "1" = "Cluster 1",
+                               "2" = "Cluster 3",
+                               "3" = "Cluster 4" ,
+                               "4" = "Cluster 5",
+                               "5" = "Cluster 2",
+                               "6" = "Cluster 6",
+                               "7" = "Cluster 7")
+    
+DimPlot(Integrated_d15, reduction = "tsne", split.by = "group")
+ggsave("results/clusters_by_group.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+my_levels <- c("Cluster 1","Cluster 2","Cluster 3","Cluster 4","Cluster 5","Cluster 6","Cluster 7")
+Integrated_d15@active.ident <- factor(x = Integrated_d15@active.ident, levels = my_levels)
+VlnPlot(Integrated_d15, features = c("MSLN","UPK3B","MFAP5","PTPRC","NKG7","IL7R","C1QB","CD79A","REG1A"), stack=T, flip=T,pt.size = 0, adjust=1)
+ggsave("results/volin_by_cluster.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 18)
+
+
+    
+    
+
