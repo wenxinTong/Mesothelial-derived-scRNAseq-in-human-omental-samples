@@ -1,0 +1,21 @@
+############ Conduct Trajectory using Slingshot #####################
+
+library(slingshot)
+library(tradeSeq)
+DimPlot(non_immune_seurat, reduction = 'tsne')
+
+sce<-as.SingleCellExperiment(non_immune_seurat) 
+sce <- slingshot(sce, clusterLabels = 'ident', reducedDim = 'TSNE', start.clus=1, stretch=0)
+slingsce<-SlingshotDataSet(sce)
+
+plot(reducedDims(sce)$TSNE, col = hue_pal()(3)[sce$ident], pch=16)
+lines(SlingshotDataSet(sce), lwd=3, col='black')
+
+ggsave("./paper/slingshot_trajectory.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 6)
+
+non_immune_seurat$pseudotime1 <- sce$slingPseudotime_1  
+FeaturePlot(non_immune_seurat, "pseudotime1",reduction = "tsne")
+
+ggsave("./paper/slingshot_pseudotime.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 6)
+
+############ Conduct Trajectory of the integrated High-IR samples using Monocle 3 #####################
