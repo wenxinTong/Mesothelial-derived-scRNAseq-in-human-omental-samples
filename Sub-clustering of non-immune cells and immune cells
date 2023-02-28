@@ -1,0 +1,96 @@
+############### Non-immune cells sub-clustering #########################
+
+non_immune_seurat<- subset(x = Integrated_d15, idents = c( "Cluster 1",
+                                "Cluster 2" ,
+                               "Cluster 3"),invert = FALSE)
+
+DimPlot(non_immune_seurat, reduction = "tsne", split.by = "group")
+
+
+non_immune_sub_markers <- FindAllMarkers(non_immune_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+non_immune_sub_markers %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> non_immune_top10
+
+
+DoHeatmap(non_immune_seurat, features = non_immune_top10$gene,label = FALSE,raster = FALSE)
+
+ggsave("./paper/non_immune_HEATMAP.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 16,height = 9)
+
+non_immune_seurat<-RenameIdents(object = non_immune_seurat, 
+                               "Cluster 1" = "Mesothelial cells",
+                               "Cluster 2" = "Transition cells",
+                               "Cluster 3" = "MFAP5+ cells")
+
+DimPlot(non_immune_seurat, reduction = "tsne", split.by = "group")
+ggsave("./paper/non_immune_clustering.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+pt_simple <- table(Idents(non_immune_seurat), non_immune_seurat$group)
+pt_simple <- as.data.frame(pt_simple)
+pt_simple$Var1 <- as.factor(pt_simple$Var1)
+
+theme_set(theme_classic())
+ggplot(pt_simple, aes(x = Var2, y = Freq, fill = Var1)) +
+  theme_bw(base_size = 15) +
+  geom_col(position = "fill", width = 0.5) +
+  xlab("Group") +
+  ylab("Proportion") +
+  theme(legend.title = element_blank())
+  
+  ggsave("./paper/non_immune_cluster_percentage.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 6,height = 6)
+  
+ ############### Immune cells sub-clustering #########################
+ 
+  immune_seurat<- subset(x = Integrated_d15, idents = c( "Cluster 4",
+                                "Cluster 5" ,
+                               "Cluster 6"),invert = FALSE)
+
+DimPlot(immune_seurat, reduction = "umap", split.by = "sample")
+
+immune_seurat<-ScaleData(immune_seurat,verbose = FALSE)
+immune_seurat <- RunPCA(immune_seurat, features = VariableFeatures(object = immune_seurat))
+
+immune_seurat <- RunTSNE(immune_seurat, dims = 1:15)
+immune_seurat$sample<-factor(immune_seurat$sample,levels = c("Low_IR","High_IR"))
+immune_seurat <- RunUMAP(immune_seurat, dims = 1:50)
+
+DimPlot(immune_seurat, reduction = "umap", split.by = "sample")
+
+
+immune_sub_markers <- FindAllMarkers(immune_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+immune_sub_markers %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> immune_top10
+
+
+DoHeatmap(immune_seurat, features = immune_top10$gene,label = FALSE,raster = FALSE)
+
+
+immune_seurat<-RenameIdents(object = immune_seurat, 
+                               "Cluster 4" = "T cells",
+                               "Cluster 5" = "Macrophages",
+                               "Cluster 6" = "B cells")
+DimPlot(immune_seurat, reduction = "umap", split.by = "sample")
+
+ggsave("./paper/immune_subset_umap_group.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+DoHeatmap(immune_seurat, features = immune_top10$gene,label = FALSE,raster = FALSE)
+
+ggsave("./paper/immune_HEATMAP.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 16,height = 9)
+
+
+pt_simple <- table(Idents(immune_seurat), immune_seurat$group)
+pt_simple <- as.data.frame(pt_simple)
+pt_simple$Var1 <- as.factor(pt_simple$Var1)
+
+theme_set(theme_classic())
+ggplot(pt_simple, aes(x = Var2, y = Freq, fill = Var1)) +
+  theme_bw(base_size = 15) +
+  geom_col(position = "fill", width = 0.5) +
+  xlab("Sample") +
+  ylab("Proportion") +
+  theme(legend.title = element_blank())
+ggsave("./paper/immune_cluster_percentage.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 6)
+dev.off()
