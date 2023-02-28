@@ -26,8 +26,11 @@ metadata$cells <- rownames(metadata)
 metadata$group <- NA
 metadata$group[which(str_detect(metadata$cells, "^High_IR"))] <- "High_IR"
 metadata$group[which(str_detect(metadata$cells, "^Low_IR"))] <- "Low_IR"
-
-
+metadata$sample_ID[which(str_detect(metadata$ori.ident, "^HMSLN1"))] <- "Sample1"
+metadata$sample_ID[which(str_detect(metadata$ori.ident, "^HMSLN2"))] <- "Sample2"
+metadata$sample_ID[which(str_detect(metadata$ori.ident, "^HMSLN3"))] <- "Sample3"
+metadata$sample_ID[which(str_detect(metadata$ori.ident, "^HMSLN5"))] <- "Sample4"
+metadata$sample_ID[which(str_detect(metadata$ori.ident, "^HMSLN6"))] <- "Sample5"
 merged_seurat@meta.data <- metadata
 save(merged_seurat, file="./merged_seurat.RData")
 
@@ -97,7 +100,18 @@ Integrated_d15@active.ident <- factor(x = Integrated_d15@active.ident, levels = 
 VlnPlot(Integrated_d15, features = c("MSLN","UPK3B","MFAP5","PTPRC","NKG7","IL7R","C1QB","CD79A","REG1A"), stack=T, flip=T,pt.size = 0, adjust=1)
 ggsave("results/volin_by_cluster.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 18)
 
+pt_simple <- table(Idents(Integrated_d15), Integrated_d15$sample_ID)
+pt_simple <- as.data.frame(pt_simple)
+pt_simple$Var1 <- as.factor(pt_simple$Var1)
 
+theme_set(theme_classic())
+ggplot(pt_simple, aes(x = Var2, y = Freq, fill = Var1)) +
+  theme_bw(base_size = 15) +
+  geom_col(position = "fill", width = 0.5) +
+  xlab("Sample ID") +
+  ylab("Proportion") +
+  theme(legend.title = element_blank())
+ggsave("./paper/sample_cluster_percentage.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 8,height = 6)
     
     
 
