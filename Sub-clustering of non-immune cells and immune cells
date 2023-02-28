@@ -40,6 +40,9 @@ ggplot(pt_simple, aes(x = Var2, y = Freq, fill = Var1)) +
   
   ggsave("./paper/non_immune_cluster_percentage.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 6,height = 6)
   
+FeaturePlot(non_immune_seurat,features = c("MSLN","MFAP5","CFD","PDGFRA","PDGFRB","COL6A3","CD9","CTGF"),reduction = "tsne",min.cutoff = "q5", max.cutoff = "q95",ncol = 4)
+ggsave("./paper/non_immune_FEATUREPLOT.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 16,height = 9)
+  
  ############### Immune cells sub-clustering #########################
  
   immune_seurat<- subset(x = Integrated_d15, idents = c( "Cluster 4",
