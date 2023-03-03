@@ -1,0 +1,46 @@
+library(CellChat)
+all_cluster_seurat<-RenameIdents(object = Integrated_d15, 
+                               "Cluster 1" = "Mesothelial cells",
+                               "Cluster 2" = "Transition cells",
+                               "Cluster 3" = "MFAP5+ cells",
+                               "Cluster 4" = "T cells" ,
+                               "Cluster 5" = "Macrophages",
+                               "Cluster 6" = "B cells",
+                               "Cluster 7" = "Unassigned")
+
+all_cluster_seurat<-subset(all_cluster_seurat,idents="Unassigned",invert=T)
+
+
+lowIR_seurat<-subset(x = all_cluster_seurat, sample=="Low_IR")
+
+lowIR_data.input <- GetAssayData(lowIR_seurat, assay = "RNA", slot = "data") 
+lowIR_labels <- Idents(lowIR_seurat)
+lowIR_meta <- data.frame(group = lowIR_labels, row.names = names(lowIR_labels))
+
+lowIR_cellchat <- createCellChat(object = lowIR_data.input, meta = lowIR_meta, group.by = "group")
+
+
+lowIR_cellchat <- addMeta(lowIR_cellchat, meta = lowIR_meta)
+lowIR_cellchat <- setIdent(lowIR_cellchat, ident.use = "group") 
+levels(lowIR_cellchat@idents) 
+lowIR_groupSize <- as.numeric(table(lowIR_cellchat@idents)) 
+CellChatDB <- CellChatDB.human
+showDatabaseCategory(CellChatDB)
+CellChatDB.use <- CellChatDB 
+lowIR_cellchat@DB <- CellChatDB.use
+lowIR_cellchat <- subsetData(lowIR_cellchat)
+
+
+lowIR_cellchat <- identifyOverExpressedGenes(lowIR_cellchat)
+lowIR_cellchat <- identifyOverExpressedInteractions(lowIR_cellchat)
+
+lowIR_cellchat <- projectData(lowIR_cellchat, PPI.human)
+
+lowIR_cellchat <- computeCommunProb(lowIR_cellchat,raw.use = F,population.size = T)
+
+lowIR_cellchat <- filterCommunication(lowIR_cellchat, min.cells = 10)
+lowIR_cellchat <- computeCommunProbPathway(lowIR_cellchat)
+lowIR_cellchat <- aggregateNet(lowIR_cellchat)
+
+netVisual_circle(lowIR_cellchat@net$count, vertex.weight = lowIR_groupSize, weight.scale = T, label.edge= F, title.name = "Number of interactions")
+netVisual_circle(lowIR_cellchat@net$weight, vertex.weight = lowIR_groupSize, weight.scale = T, label.edge= F, title.name = "Interaction weights/strength")
