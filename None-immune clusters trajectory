@@ -87,6 +87,9 @@ cell_clusters_ordered = adata_index.merge(cell_clusters, on = "Cell ID")
 cell_clusters_ordered = cell_clusters_ordered.iloc[:,1:]
 adata.obs['clusters']=cell_clusters_ordered.values
 
+scv.settings.presenter_view = True
+scv.set_figure_params('scvelo',dpi=300)
+
 scv.pp.filter_and_normalize(adata)
 scv.pp.moments(adata)
 scv.tl.velocity(adata, mode = "stochastic")
