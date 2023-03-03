@@ -1,1 +1,206 @@
+############### Trajectory of our meso-derived clusters to mesothelial clusters identified in previous published scRNAseq datasets #########
+############## Download the mesothelial clusters RDS data from Rosen Lab "https://gitlab.com/rosen-lab/white-adipose-atlas" ################
+############## Related analysis on this datasets were published on Nature (2022) at "https://doi.org/10.1038/s41586-022-04518-2" ###########
+
+Rosen_meso<-readRDS("human_mesothelium.rds")
+Rosen_meso@meta.data
+Rosen_meso_reference <- ScaleData(Rosen_meso)
+Rosen_meso_reference <- FindVariableFeatures(Rosen_meso_reference)
+Rosen_meso_reference[["umap"]] <- CreateDimReducObject(embeddings = Rosen_meso_reference@reductions$umap@cell.embeddings, assay = "RNA", misc = Rosen_meso_reference@reductions$umap@misc)
+Rosen_meso_reference <- RunPCA(Rosen_meso_reference)
+Rosen_meso_reference <- FindNeighbors(
+  object = Rosen_meso_reference,
+  reduction = "pca",
+  dims = 1:30,
+  graph.name = "pca.annoy.neighbors", 
+  k.param = 50,
+  cache.index = TRUE,
+  return.neighbor = TRUE,
+  l2.norm = TRUE)
+Rosen_meso_reference <- RunUMAP(Rosen_meso_reference, dims = 1:30, reduction = "pca", return.model = TRUE)
+rosen_anchors<-FindTransferAnchors(
+    reference = Rosen_meso_reference,
+    query = non_immune_seurat,
+    reference.reduction = "pca", 
+    dims = 1:15)
+
+
+query_Rosen_meso <- MapQuery(
+    anchorset = rosen_anchors, 
+    query = non_immune_seurat,
+    reference = Rosen_meso_reference, 
+    refdata = list(
+      celltype = "cell_type"),
+    reference.reduction = "pca",
+    reduction.model = "umap")
+
+
+non_immune_seurat$Rosen_predicted.celltype <- "temp"
+
+  cells <- colnames(non_immune_seurat)
+  non_immune_seurat$Rosen_predicted.celltype[cells] <- query_Rosen_meso$predicted.celltype
+  embed <- query_Rosen_meso@reductions$ref.umap@cell.embeddings
+umap <- as.data.frame(embed)
+ 
+non_immune_seurat[["refUMAP"]] <- CreateDimReducObject(as.matrix(umap), key = "refUMAP_", assay = "RNA")
+
+
+edges_Rosen_projection <- as.data.frame(with(non_immune_seurat@meta.data, table(cell_type, Rosen_predicted.celltype)))
+
+nodes <- data.frame(name=c(as.character(edges_Rosen_projection$cell_type), as.character(edges_Rosen_projection$Rosen_predicted.celltype)) %>% unique())
+edges_Rosen_projection$IDsource=match(edges_Rosen_projection$cell_type, nodes$name)-1 
+edges_Rosen_projection$IDtarget=match(edges_Rosen_projection$Rosen_predicted.celltype, nodes$name)-1
+
+ColourScal ='d3.scaleOrdinal() .range(["#FDE725FF","#B4DE2CFF","#6DCD59FF","#35B779FF","#1F9E89FF","#26828EFF","#31688EFF","#3E4A89FF","#482878FF","#440154FF"])'
+
+library(networkD3)
+p<-sankeyNetwork(Links = edges_Rosen_projection, Nodes = nodes,
+                     Source = "IDsource", Target = "IDtarget",
+                     Value = "Freq", NodeID = "name", 
+                     sinksRight=FALSE, colourScale=ColourScal, nodeWidth=40, fontSize=13, nodePadding=20)
+
+saveNetwork(p, "project_Rosen_meso.html")
+webshot::webshot("sn2.html","project_Rosen_meso.pdf", vwidth = 1000,vheight = 900)
+                     
+#############   Identify marker genes of individual clusters in the Rosen meso cells and plot the expression levels of these genes in the human omental meso-derived clusters ########################
+
+Idents(Rosen_meso)<-Rosen_meso@meta.data$cell_type
+Rosen_meso_markers <- FindAllMarkers(Rosen_meso, group.by="cell_type",only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+Rosen_meso_markers %>%
+    group_by(cluster) %>%
+    top_n(n = 15, wt = avg_log2FC) -> Rosen_meso_top15
+marker<-unique(Rosen_meso_top15$gene)
+DotPlot(Rosen_meso, features = marker) + RotatedAxis()
+ggsave("./paper/Rosen_meso_markers.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+
+DotPlot(non_immune_seurat, features = marker) + RotatedAxis()
+ggsave("./paper/Hm_Rosen_meso_markers.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+
+
+############### Trajectory of our meso-derived clusters to SVF clusters identified in our previous published  5-weeks-old mouse visceral adipose tissue SVF-enriched scRNAseq datasets #########
+############## Related analysis on this datasets were published on Nature Metabolism (2022) at "https:/rana gupta /doi.org/10.1038/s42255-022-00613-w" ###########
+
+############## the pre-processed visceral adipose tissue SVF-enriched non-immune sub-clusters seurat object could be downloaded in the data folder and the raw dataset is available on GSE180987-GSM5481720 ################
+   
+load("simplified_P35_seurat.RData")
+DimPlot(simplified_P35, reduction = 'tsne')
+mouse_meso<-subset(x = simplified_P35, idents = c("APCs","Meso","FIPs"),invert = FALSE)
+DimPlot(mouse_meso, reduction = 'tsne')
+mouse_meso@meta.data$cell_type<-Idents(mouse_meso)
+mart_export <- read.delim("mart_export.txt", row.names=NULL,sep = ",")
+head(mart_export)
+mart1<-mart_export[,c(4,5)]
+mart1$Mouse.gene.name<-str_to_title(mart1$Mouse.gene.name)
+head(mart1)
+mart1<-na.omit(mart1)
+mart1$id<-paste0(mart1$Gene.name,"-",mart1$Mouse.gene.name)
+mart2<-subset(mart1,!duplicated(mart1$id))
+
+mart2<-dplyr::filter(mart2,!duplicated(Mouse.gene.name))
+mart2<-dplyr::filter(mart2,!duplicated(Gene.name))
+mart2<-na.omit(mart2)
+
+mousegenes<-as.vector(unlist(mart2$Mouse.gene.name))
+humangenes<-as.vector(unlist(mart2$Gene.name))
+nrow(mart2)
+nrow(mouse_meso)
+counts <- mouse_meso@assays$RNA@counts
+mmgene<-mousegenes[mousegenes %in% rownames(counts)]
+
+head(counts)
+counts <- counts[mmgene,]
+rownames(counts) <- dplyr::filter(mart2,mart2$Mouse.gene.name %in% mmgene)[,"Gene.name"]
+counts<-counts[-1,]
+mouse_meso <- CreateSeuratObject(counts = counts, meta.data = mouse_meso@meta.data)
+
+mouse_meso<- NormalizeData(mouse_meso)
+mouse_meso <- FindVariableFeatures(mouse_meso, 
+                     selection.method = "vst",
+                     nfeatures = 2000, 
+                     verbose = FALSE)
+mouse_meso<-ScaleData(mouse_meso)
+mouse_meso <- RunPCA(mouse_meso, features = VariableFeatures(object = mouse_meso))
+mouse_meso <- FindNeighbors(mouse_meso, dims = 1:15)
+mouse_meso <- FindClusters(mouse_meso, resolution = 0.10)
+mouse_meso <- RunTSNE(mouse_meso, dims = 1:15)
+mouse_meso <- RunUMAP(mouse_meso, dims = 1:15)
+
+mouse_meso_reference <- ScaleData(mouse_meso)
+mouse_meso_reference <- FindVariableFeatures(mouse_meso_reference)
+mouse_meso_reference[["umap"]] <- CreateDimReducObject(embeddings = mouse_meso_reference@reductions$umap@cell.embeddings, assay = "RNA", misc = mouse_meso_reference@reductions$umap@misc)
+mouse_meso_reference <- RunPCA(mouse_meso_reference)
+mouse_meso_reference <- FindNeighbors(
+  object = mouse_meso_reference,
+  reduction = "pca",
+  dims = 1:30,
+  graph.name = "pca.annoy.neighbors", 
+  k.param = 50,
+  cache.index = TRUE,
+  return.neighbor = TRUE,
+  l2.norm = TRUE)
+mouse_meso_reference <- RunUMAP(mouse_meso_reference, dims = 1:30, reduction = "pca", return.model = TRUE)
+mouse_anchors<-FindTransferAnchors(
+    reference = mouse_meso_reference,
+    query = non_immune_seurat,
+    reference.reduction = "pca", 
+    dims = 1:15)
+
+meso_query_mouse <- MapQuery(
+    anchorset = mouse_anchors, 
+    query = non_immune_seurat,
+    reference = mouse_meso_reference, 
+    refdata = list(
+      celltype = "cell_type"),
+    reference.reduction = "pca",
+    reduction.model = "umap")
+
+
+non_immune_seurat$mouse_predicted.celltype <- "temp"
+
+  cells <- colnames(non_immune_seurat)
+  non_immune_seurat$mouse_predicted.celltype[cells] <- meso_query_mouse$predicted.celltype
+  embed <- meso_query_mouse@reductions$ref.umap@cell.embeddings
+umap <- as.data.frame(embed)
+ 
+non_immune_seurat[["refUMAP"]] <- CreateDimReducObject(as.matrix(umap), key = "refUMAP_", assay = "RNA")
+
+
+
+edges_mouse_projection <- as.data.frame(with(non_immune_seurat@meta.data, table(cell_type, mouse_predicted.celltype)))
+
+nodes <- data.frame(name=c(as.character(edges_mouse_projection$cell_type), as.character(edges_mouse_projection$mouse_predicted.celltype)) %>% unique())
+edges_mouse_projection$IDsource=match(edges_mouse_projection$cell_type, nodes$name)-1 
+edges_mouse_projection$IDtarget=match(edges_mouse_projection$mouse_predicted.celltype, nodes$name)-1
+
+ColourScal ='d3.scaleOrdinal() .range(["#FDE725FF","#B4DE2CFF","#6DCD59FF","#35B779FF","#1F9E89FF","#26828EFF","#31688EFF","#3E4A89FF","#482878FF","#440154FF"])'
+
+library(networkD3)
+a<-sankeyNetwork(Links = edges_mouse_projection, Nodes = nodes,
+                     Source = "IDsource", Target = "IDtarget",
+                     Value = "Freq", NodeID = "name", 
+                     sinksRight=FALSE, colourScale=ColourScal, nodeWidth=40, fontSize=13, nodePadding=20)
+
+saveNetwork(a, "project_mouse_svf.html")
+webshot::webshot("project_mouse_svf.html","project_mouse_svf.pdf", vwidth = 1000,vheight = 900)   
+   
+#############   Identify marker genes of individual clusters in the mouse non-immune svf cells and plot the expression levels of these genes in the human omental meso-derived clusters ########################
+
+mouse_svf_markers <- FindAllMarkers(mouse_meso, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+mouse_svf_markers %>%
+    group_by(cluster) %>%
+    top_n(n = 15, wt = avg_log2FC) -> mouse_svf_top15
+
+DotPlot(mouse_meso, features = mouse_svf_top15$gene) + RotatedAxis()
+ggsave("./paper/mouse_meso_svf_markers.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+
+DotPlot(non_immune_seurat, features = str_to_upper(mouse_svf_top15$gene)) + RotatedAxis()
+ggsave("./paper/Hm_mouse_meso_svf_markers.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+
+
+
 
