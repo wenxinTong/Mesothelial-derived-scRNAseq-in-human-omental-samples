@@ -18,4 +18,91 @@ FeaturePlot(non_immune_seurat, "pseudotime1",reduction = "tsne")
 
 ggsave("./paper/slingshot_pseudotime.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 6)
 
-############ Conduct Trajectory of the integrated High-IR samples using Monocle 3 #####################
+############ Conduct Cell Velocity Trajectory Using velocyto and scVelo #####################
+
+############ Please refer to the velocyto pipline to generate sliced and unsliced counts within .loom files using the 10X output .bam files;
+
+(code example for generate loom files: "velocyto run10x -m repeat_msk.gtf mypath/sample01 somepath/refdata-cellranger-mm10-1.2.0/genes/genes.gtf") #########
+
+##### Extract non-immune cells info in seurat object, change the cellID to map the cell IDs in the loom files (the velocyto generates randon prefixes for each sample)###########
+
+non_immune_seurat@meta.data$barcode<-sapply(non_immune_seurat@meta.data$cells,function(x)unlist(strsplit(x, "_"))[3])
+non_immune_seurat@meta.data<-non_immune_seurat@meta.data %>% mutate(pid = ifelse(orig.ident=="HMSLN1",paste0("HMSLN1_IB1KU:",barcode),ifelse(orig.ident=="HMSLN2",paste0("possorted_genome_bam_6EZ4C:",barcode),ifelse(orig.ident=="HMSLN3",paste0("HMSLN3_EG04A:",barcode),ifelse(orig.ident=="HMSLN5",paste0("HMSLN5_P279P:",barcode),paste0("HMSLN6_V8NCH:",barcode))))))
+
+non_immune_seurat@meta.data$cell_ID<-sapply(non_immune_seurat@meta.data$pid,function(x)paste(unlist(strsplit(x, "-"))[1],"x",sep = ""))
+non_immune_seurat@meta.data$cluster<-Idents(non_immune_seurat)
+
+write.csv(non_immune_seurat@meta.data$cell_ID, file = "cellID_obs.csv", row.names = FALSE) 
+
+cell_embeddings<-Embeddings(non_immune_seurat, reduction = "tsne")
+rownames(cell_embeddings)<-non_immune_seurat@meta.data$cell_ID 
+write.csv(cell_embeddings, file = "cell_embeddings.csv")
+clusters_obs<-non_immune_seurat@meta.data$cluster 
+names(clusters_obs)<-subset_seurat@meta.data$cell_ID 
+write.csv(clusters_obs, file = "clusters_obs.csv")
+
+##### The scVelo is a python based package, generate a jupyternote book and run the scripts in jupiter notebooks ###########
+
+import anndata
+import scvelo as scv
+import pandas as pd
+import numpy as np
+import matplotlib as plt
+%load_ext rpy2.ipython
+
+sample_one = anndata.read_loom("HMSLN1_IB1KU.loom")
+sample_two = anndata.read_loom("HMSLN2.loom")
+sample_three = anndata.read_loom("HMSLN3_EG04A.loom")
+sample_four = anndata.read_loom("HMSLN5_P279P.loom")
+sample_five = anndata.read_loom("HMSLN6_V8NCH.loom")
+
+sample_obs = pd.read_csv("cellID_obs.csv")
+tsne = pd.read_csv("cell_embeddings.csv")
+cell_clusters = pd.read_csv("clusters_obs.csv")
+
+sample_one = sample_one[np.isin(sample_one.obs.index,sample_obs["x"])]
+sample_two = sample_two[np.isin(sample_two.obs.index,sample_obs["x"])]
+sample_three = sample_three[np.isin(sample_three.obs.index,sample_obs["x"])]
+sample_four = sample_six[np.isin(sample_four.obs.index,sample_obs["x"])]
+sample_five = sample_five[np.isin(sample_five.obs.index,sample_obs["x"])]
+
+adata = sample_one.concatenate(sample_two, sample_three,sample_four,sample_five)
+adata_index = pd.DataFrame(adata.obs.index)
+adata_index = adata_index.rename(columns = {0:'Cell ID'})
+adata_index = adata_index.rename(columns = {"CellID":'Cell ID'})
+rep=lambda x : x.split("-")[0]
+adata_index["Cell ID"]=adata_index["Cell ID"].apply(rep)
+
+tsne = tsne.rename(columns = {'Unnamed: 0':'Cell ID'})
+tsne = tsne[np.isin(tsne["Cell ID"],adata_index["Cell ID"])] 
+tsne=tsne.drop_duplicates(subset=["Cell ID"]) 
+tsne_ordered = adata_index.merge(tsne, on = "Cell ID")
+tsne_ordered = tsne_ordered.iloc[:,1:] 
+adata.obsm['X_tsne'] = tsne_ordered.values 
+
+cell_clusters = cell_clusters.rename(columns = {'Unnamed: 0':'Cell ID'})
+cell_clusters = cell_clusters[np.isin(cell_clusters["Cell ID"],adata_index["Cell ID"])]
+cell_clusters=cell_clusters.drop_duplicates(subset=["Cell ID"]) 
+cell_clusters_ordered = adata_index.merge(cell_clusters, on = "Cell ID")
+cell_clusters_ordered = cell_clusters_ordered.iloc[:,1:]
+adata.obs['clusters']=cell_clusters_ordered.values
+
+scv.pp.filter_and_normalize(adata)
+scv.pp.moments(adata)
+scv.tl.velocity(adata, mode = "stochastic")
+scv.tl.velocity_graph(adata)
+
+scv.pl.proportions(adata)
+scv.pl.velocity_embedding(adata,basis = 'tsne')
+scv.pl.velocity_embedding_stream(adata)
+###### save velocity plot in stochastic state ######
+
+scv.tl.recover_dynamics(adata)
+scv.tl.velocity(adata, mode='dynamical')
+scv.tl.velocity_graph(adata)
+#adata.write('meso.h5ad', compression='gzip')
+#adata = scv.read('meso.h5ad')
+scv.pl.velocity_embedding_stream(adata, basis='tsne')
+
+###### save velocity plot in dynamic state ######
+
