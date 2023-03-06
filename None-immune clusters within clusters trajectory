@@ -18,6 +18,62 @@ FeaturePlot(non_immune_seurat, "pseudotime1",reduction = "tsne")
 
 ggsave("./paper/slingshot_pseudotime.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 6)
 
+
+############ Conduct Trajectory using Monocle3. Because Monocle 3 only do projection on UMAP, we re-cluster the cells in UMAP and use the High-IR samples to do trajectory#####################
+
+library(SeuratWrappers)
+library(monocle3)
+library(patchwork)
+library(Seurat)
+library(SeuratObject)
+
+non_immune_seurat$cell_type<-Idents(non_immune_seurat)
+
+non_immune_seurat<-ScaleData(non_immune_seurat,verbose = FALSE)
+non_immune_seurat <- RunPCA(non_immune_seurat, features = VariableFeatures(object = non_immune_seurat))
+
+non_immune_seurat <- RunTSNE(non_immune_seurat, dims = 1:15)
+non_immune_seurat <- RunUMAP(non_immune_seurat, dims = 1:15)
+
+DimPlot(high_IR_non_immune_seurat, reduction = "umap")
+
+high_IR_non_immune_seurat<-subset(non_immune_seurat,subset=sample=="High_IR")
+
+
+cds <- as.cell_data_set(high_IR_non_immune_seurat)
+cds <- cluster_cells(cds, resolution=5e-6)
+p1 <- plot_cells(cds, color_cells_by = "cluster", show_trajectory_graph = FALSE)
+p2 <- plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE)
+wrap_plots(p1, p2)
+
+high_IR_non_immune <- subset(as.Seurat(cds, assay = NULL), monocle3_partitions == 1)
+cds <- as.cell_data_set(high_IR_non_immune)
+
+cds <- learn_graph(cds, use_partition = TRUE, verbose = FALSE)
+
+plot_cells(cds,
+           color_cells_by = "cell_type",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE)
+
+ggsave("monocle3_trajectory.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 6)
+
+
+cds <- order_cells(cds, root_cells = colnames(cds[,colData(cds)$monocle3_clusters=="1"]))
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           group_cells_by = "cluster",
+           label_cell_groups = FALSE,
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           label_roots = FALSE,
+           trajectory_graph_color = "grey60")
+
+ggsave("monocle3_pseudotime.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 9,height = 6)
+
+
 ############ Conduct Cell Velocity Trajectory Using velocyto and scVelo #####################
 
 ############ Please refer to the velocyto pipline to generate sliced and unsliced counts within .loom files using the 10X output .bam files;
