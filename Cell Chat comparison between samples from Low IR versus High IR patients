@@ -44,3 +44,170 @@ lowIR_cellchat <- aggregateNet(lowIR_cellchat)
 
 netVisual_circle(lowIR_cellchat@net$count, vertex.weight = lowIR_groupSize, weight.scale = T, label.edge= F, title.name = "Number of interactions")
 netVisual_circle(lowIR_cellchat@net$weight, vertex.weight = lowIR_groupSize, weight.scale = T, label.edge= F, title.name = "Interaction weights/strength")
+
+pdf(file = "lowIR_interactions.pdf",
+    width = 6, # The width of the plot in inches
+    height = 6) 
+netVisual_circle(lowIR_cellchat@net$count, vertex.weight = lowIR_groupSize, weight.scale = T, label.edge= F, title.name = "Number of interactions")
+dev.off()
+
+netVisual_circle(lowIR_cellchat@net$weight, vertex.weight = lowIR_groupSize, weight.scale = T, label.edge= F, title.name = "Interaction weights/strength")
+
+
+
+highIR_seurat<-subset(x = all_cluster_seurat, sample=="High_IR")
+
+highIR_data.input <- GetAssayData(highIR_seurat, assay = "RNA", slot = "data") 
+highIR_labels <- Idents(highIR_seurat)
+highIR_meta <- data.frame(group = highIR_labels, row.names = names(highIR_labels))
+
+highIR_cellchat <- createCellChat(object = highIR_data.input, meta = highIR_meta, group.by = "group")
+
+
+highIR_cellchat <- addMeta(highIR_cellchat, meta = highIR_meta)
+highIR_cellchat <- setIdent(highIR_cellchat, ident.use = "group") 
+levels(highIR_cellchat@idents) 
+highIR_groupSize <- as.numeric(table(highIR_cellchat@idents)) 
+
+highIR_cellchat@DB <- CellChatDB.use
+highIR_cellchat <- subsetData(highIR_cellchat)
+
+
+highIR_cellchat <- identifyOverExpressedGenes(highIR_cellchat)
+highIR_cellchat <- identifyOverExpressedInteractions(highIR_cellchat)
+
+highIR_cellchat <- projectData(highIR_cellchat, PPI.human)
+
+highIR_cellchat <- computeCommunProb(highIR_cellchat,raw.use = F,population.size = T)
+
+highIR_cellchat <- filterCommunication(highIR_cellchat, min.cells = 10)
+highIR_cellchat <- computeCommunProbPathway(highIR_cellchat)
+highIR_cellchat <- aggregateNet(highIR_cellchat)
+pdf(file = "highIR_interactions.pdf",
+    width = 6, # The width of the plot in inches
+    height = 6) 
+netVisual_circle(highIR_cellchat@net$count, vertex.weight = highIR_groupSize, weight.scale = T, label.edge= F, title.name = "Number of interactions")
+dev.off()
+netVisual_circle(highIR_cellchat@net$weight, vertex.weight = highIR_groupSize, weight.scale = T, label.edge= F, title.name = "Interaction weights/strength")
+
+############# Merge the two CellChat object together and explore the differential cell-cell interaction between Low-IR and high-IR #####################
+
+cellchat.lowIR <- updateCellChat(lowIR_cellchat)
+cellchat.lowIR <- netAnalysis_computeCentrality(cellchat.lowIR)
+cellchat.highIR <- updateCellChat(highIR_cellchat)
+cellchat.highIR <- netAnalysis_computeCentrality(cellchat.highIR)
+object.list <- list(low_IR = cellchat.lowIR, high_IR = cellchat.highIR)
+cellchat <- mergeCellChat(object.list, add.names = names(object.list))
+cellchat
+
+pdf(file = "DE_interactions.pdf",
+    width = 4, # The width of the plot in inches
+    height = 4) 
+compareInteractions(cellchat, show.legend = F, group = c(1,2))
+
+pdf(file = "DE_interactions_circle.pdf",
+    width = 6, # The width of the plot in inches
+    height = 6) 
+netVisual_diffInteraction(cellchat, weight.scale = T)
+
+pdf(file = "DE_interactions_heatmap.pdf",
+    width = 8, # The width of the plot in inches
+    height = 6) 
+netVisual_heatmap(cellchat)
+
+
+pdf(file = "DE_interactions_XY.pdf",
+    width = 9, # The width of the plot in inches
+    height = 6) 
+
+num.link <- sapply(object.list, function(x) {rowSums(x@net$count) + colSums(x@net$count)-diag(x@net$count)})
+weight.MinMax <- c(min(num.link), max(num.link)) # control the dot size in the different datasets
+gg <- list()
+for (i in 1:length(object.list)) {
+  gg[[i]] <- netAnalysis_signalingRole_scatter(object.list[[i]], title = names(object.list)[i], weight.MinMax = weight.MinMax)
+}
+patchwork::wrap_plots(plots = gg)
+
+pdf(file = "DE_signaling_Meso.pdf",
+    width = 7, # The width of the plot in inches
+    height = 6) 
+
+netAnalysis_signalingChanges_scatter(cellchat, idents.use = "Mesothelial cells")
+
+
+pdf(file = "DE_signaling_Mfap5.pdf",
+    width = 7, # The width of the plot in inches
+    height = 6) 
+netAnalysis_signalingChanges_scatter(cellchat, idents.use = "MFAP5+ cells")
+
+pdf(file = "DE_signaling_TC.pdf",
+    width = 7, # The width of the plot in inches
+    height = 6) 
+
+netAnalysis_signalingChanges_scatter(cellchat, idents.use = "Transition cells")
+
+
+
+pdf(file = "Relative_signaling.pdf",   # The directory you want to save the file in
+    width = 6, # The width of the plot in inches
+    height = 12) 
+ rankNet(cellchat, measure = "count",mode = "comparison", comparison = c(1,2),,stacked = F, do.stat = TRUE)
+
+pdf(file = "collagen_pairs.pdf",   # The directory you want to save the file in
+    width = 9, # The width of the plot in inches
+    height = 6) 
+
+
+netVisual_bubble(signaling ="COLLAGEN" ,cellchat, sources.use = c(1:3), targets.use = c(1:3),  comparison = c(1, 2), angle.x = 45,grid.on =TRUE )
+
+pdf(file = "collagen_signaling.pdf",   # The directory you want to save the file in
+    width = 12, # The width of the plot in inches
+    height = 6) 
+
+pathways.show <- c("COLLAGEN") 
+par(mfrow = c(1,2), xpd=TRUE)
+ht <- list()
+for (i in 1:length(object.list)) {
+  ht[[i]] <- netVisual_heatmap(object.list[[i]], signaling = pathways.show, color.heatmap = "Reds",title.name = paste(pathways.show, "signaling ",names(object.list)[i]))
+}
+ComplexHeatmap::draw(ht[[1]] + ht[[2]], ht_gap = unit(0.5, "cm"))
+
+
+pdf(file = "TENASCIN_signaling.pdf",   # The directory you want to save the file in
+    width = 12, # The width of the plot in inches
+    height = 6) 
+
+pathways.show <- c("TENASCIN") 
+par(mfrow = c(1,2), xpd=TRUE)
+ht <- list()
+for (i in 1:length(object.list)) {
+  ht[[i]] <- netVisual_heatmap(object.list[[i]], signaling = pathways.show, color.heatmap = "Reds",title.name = paste(pathways.show, "signaling ",names(object.list)[i]))
+}
+ComplexHeatmap::draw(ht[[1]] + ht[[2]], ht_gap = unit(0.5, "cm"))
+
+pdf(file = "TENASCIN_pairs.pdf",   # The directory you want to save the file in
+    width = 9, # The width of the plot in inches
+    height = 6) 
+
+
+netVisual_bubble(signaling ="TENASCIN" ,cellchat, sources.use = c(1:3), targets.use = c(1:3),  comparison = c(1, 2), angle.x = 45,grid.on =TRUE )
+
+
+pdf(file = "FN1_signaling.pdf",   # The directory you want to save the file in
+    width = 12, # The width of the plot in inches
+    height = 6) 
+
+pathways.show <- c("FN1") 
+par(mfrow = c(1,2), xpd=TRUE)
+ht <- list()
+for (i in 1:length(object.list)) {
+  ht[[i]] <- netVisual_heatmap(object.list[[i]], signaling = pathways.show, color.heatmap = "Reds",title.name = paste(pathways.show, "signaling ",names(object.list)[i]))
+}
+ComplexHeatmap::draw(ht[[1]] + ht[[2]], ht_gap = unit(0.5, "cm"))
+
+pdf(file = "FN1_pairs.pdf",   # The directory you want to save the file in
+    width = 9, # The width of the plot in inches
+    height = 6) 
+
+
+netVisual_bubble(signaling ="FN1" ,cellchat, sources.use = c(1:3), targets.use = c(1:3),  comparison = c(1, 2), angle.x = 45,grid.on =TRUE )
