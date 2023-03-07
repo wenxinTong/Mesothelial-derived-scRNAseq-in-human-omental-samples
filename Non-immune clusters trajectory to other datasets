@@ -79,10 +79,89 @@ ggsave("./paper/Hm_Rosen_meso_markers.pdf",device="pdf",plot = last_plot(),dpi =
 
 
 
-############### Trajectory of our meso-derived clusters to SVF clusters identified in our previous published  5-weeks-old mouse visceral adipose tissue SVF-enriched scRNAseq datasets #########
+############## To map onto Vijay huamn adipose scRNAseq data, raw data was downloaded from GSE136230 and reanalyzed in situ. Related analysis on this datasets were published on Nature Metabolism (2020) at "https://doi.org/10.1038/s42255-019-0152-6" ###########
+
+load("/dmpi/analysis/RGupta/221013_VJ_scRNAseq/VJ_record_seurat.RData")
+VJ_meso<-subset(x = VJ_record_seurat, idents = c("Meso1","Meso2","Meso3"),invert = FALSE)
+DimPlot(VJ_meso, reduction = 'tsne')
+
+FeaturePlot(VJ_meso,features = c("MSLN"),reduction = "tsne",min.cutoff = "q5", max.cutoff = "q95") 
+VJ_meso@meta.data$cell_type<-Idents(VJ_meso)
+VJ_meso_reference <- ScaleData(VJ_meso)
+VJ_meso_reference <- FindVariableFeatures(VJ_meso_reference)
+VJ_meso_reference[["umap"]] <- CreateDimReducObject(embeddings = VJ_meso_reference@reductions$umap@cell.embeddings, assay = "RNA", misc = VJ_meso_reference@reductions$umap@misc)
+VJ_meso_reference <- RunPCA(VJ_meso_reference)
+VJ_meso_reference <- FindNeighbors(
+  object = VJ_meso_reference,
+  reduction = "pca",
+  dims = 1:30,
+  graph.name = "pca.annoy.neighbors", 
+  k.param = 50,
+  cache.index = TRUE,
+  return.neighbor = TRUE,
+  l2.norm = TRUE)
+VJ_meso_reference <- RunUMAP(VJ_meso_reference, dims = 1:30, reduction = "pca", return.model = TRUE)
+VJ_anchors<-FindTransferAnchors(
+    reference = VJ_meso_reference,
+    query = non_immune_seurat,
+    reference.reduction = "pca", 
+    dims = 1:15)
+
+query_VJ <- MapQuery(
+    anchorset = VJ_anchors, 
+    query = non_immune_seurat,
+    reference = VJ_meso_reference, 
+    refdata = list(
+      celltype = "cell_type"),
+    reference.reduction = "pca",
+    reduction.model = "umap")
+
+
+non_immune_seurat$VJ_predicted.celltype <- "temp"
+
+  cells <- colnames(query_VJ)
+  non_immune_seurat$VJ_predicted.celltype[cells] <- query_VJ$predicted.celltype
+  embed <- query_VJ@reductions$ref.umap@cell.embeddings
+umap <- as.data.frame(embed)
+ 
+non_immune_seurat[["refUMAP"]] <- CreateDimReducObject(as.matrix(umap), key = "refUMAP_", assay = "RNA")
+
+
+
+edges_vj_projection <- as.data.frame(with(non_immune_seurat@meta.data, table(cell_type, VJ_predicted.celltype)))
+
+nodes <- data.frame(name=c(as.character(edges_vj_projection$cell_type), as.character(edges_vj_projection$VJ_predicted.celltype)) %>% unique())
+edges_vj_projection$IDsource=match(edges_vj_projection$cell_type, nodes$name)-1 
+edges_vj_projection$IDtarget=match(edges_vj_projection$VJ_predicted.celltype, nodes$name)-1
+
+ColourScal ='d3.scaleOrdinal() .range(["#FDE725FF","#B4DE2CFF","#6DCD59FF","#35B779FF","#1F9E89FF","#26828EFF","#31688EFF","#3E4A89FF","#482878FF","#440154FF"])'
+
+library(networkD3)
+b<-sankeyNetwork(Links = edges_vj_projection, Nodes = nodes,
+                     Source = "IDsource", Target = "IDtarget",
+                     Value = "Freq", NodeID = "name", 
+                     sinksRight=FALSE, colourScale=ColourScal, nodeWidth=40, fontSize=13, nodePadding=20)
+
+saveNetwork(b, "project_VJ_meso.html")
+webshot::webshot("project_VJ_meso.html","project_VJ_meso.html.pdf", vwidth = 1000,vheight = 900)
+
+VJ_meso_markers <- FindAllMarkers(VJ_meso, group.by="cell_type",only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+VJ_meso_markers %>%
+    group_by(cluster) %>%
+    top_n(n = 15, wt = avg_log2FC) -> VJ_meso_top15
+marker<-unique(VJ_meso_top15$gene)
+DotPlot(VJ_meso, features = marker) + RotatedAxis()
+ggsave("./paper/VJ_meso_markers.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+
+DotPlot(non_immune_seurat, features = marker) + RotatedAxis()
+ggsave("./paper/Hm_VJ_meso_markers.pdf",device="pdf",plot = last_plot(),dpi = 300,width = 12,height = 6)
+
+
+
+############### Trajectory of our meso-derived clusters to SVF clusters identified in our previous published  5-weeks-old mouse visceral adipose tissue SVF-enriched scRNAseq datasets,raw dataset is available on GSE180987-GSM5481720 #########
 ############## Related analysis on this datasets were published on Nature Metabolism (2022) at "https:/rana gupta /doi.org/10.1038/s42255-022-00613-w" ###########
 
-############## the pre-processed visceral adipose tissue SVF-enriched non-immune sub-clusters seurat object could be downloaded in the data folder and the raw dataset is available on GSE180987-GSM5481720 ################
    
 load("simplified_P35_seurat.RData")
 DimPlot(simplified_P35, reduction = 'tsne')
