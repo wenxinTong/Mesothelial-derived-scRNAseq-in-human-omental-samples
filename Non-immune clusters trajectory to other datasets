@@ -79,7 +79,7 @@ ggsave("./paper/Hm_Rosen_meso_markers.pdf",device="pdf",plot = last_plot(),dpi =
 
 
 
-############## To map onto Vijay huamn adipose scRNAseq data, raw data was downloaded from GSE136230 and reanalyzed in situ. Related analysis on this datasets were published on Nature Metabolism (2020) at "https://doi.org/10.1038/s42255-019-0152-6" ###########
+############## To map onto Vijay huamn adipose scRNAseq data, raw data was downloaded from GSE136230 and reanalyzed in situ. Preprocessed data were stored in the seurat object VJ_record_seurat.RData that is avaiable in this folder. Related analysis on this datasets were published on Nature Metabolism (2020) at "https://doi.org/10.1038/s42255-019-0152-6" ###########
 
 load("/dmpi/analysis/RGupta/221013_VJ_scRNAseq/VJ_record_seurat.RData")
 VJ_meso<-subset(x = VJ_record_seurat, idents = c("Meso1","Meso2","Meso3"),invert = FALSE)
@@ -160,7 +160,7 @@ ggsave("./paper/Hm_VJ_meso_markers.pdf",device="pdf",plot = last_plot(),dpi = 30
 
 
 ############### Trajectory of our meso-derived clusters to SVF clusters identified in our previous published  5-weeks-old mouse visceral adipose tissue SVF-enriched scRNAseq datasets,raw dataset is available on GSE180987-GSM5481720 #########
-############## Related analysis on this datasets were published on Nature Metabolism (2022) at "https:/rana gupta /doi.org/10.1038/s42255-022-00613-w" ###########
+############## Preprocessed data were stored in the seurat object simplified_P35_seurat.RData that is avaiable in this folderRelated analysis on this datasets were published on Nature Metabolism (2022) at "https:/rana gupta /doi.org/10.1038/s42255-022-00613-w" ###########
 
    
 load("simplified_P35_seurat.RData")
